@@ -1,0 +1,238 @@
+<script language="javascript" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/0.5.7/p5.min.js" defer></script>
+<script language="javascript" src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/0.5.7/addons/p5.dom.min.js" defer></script>
+
+<script>
+var target;
+var popmax;
+var mutationRate;
+var population;
+
+var bestPhrase;
+var allPhrases;
+var stats;
+
+function setup() {
+  bestPhrase = createP("Best phrase:");
+  //bestPhrase.position(10,10);
+  bestPhrase.class("best");
+
+  allPhrases = createP("All phrases:");
+  allPhrases.position(700, 10);
+  allPhrases.class("all");
+
+  stats = createP("Stats");
+  //stats.position(10,200);
+  stats.class("stats");
+
+  //createCanvas(640, 360);
+  target = "Видишь? Круто!";
+  popmax = 100;
+  mutationRate = 0.01;
+
+  // Create a population with a target phrase, mutation rate, and population max
+  population = new Population(target, mutationRate, popmax);
+}
+
+function draw() {
+  // Generate mating pool
+  population.naturalSelection();
+  //Create next generation
+  population.generate();
+  // Calculate fitness
+  population.calcFitness();
+
+  population.evaluate();
+
+  // If we found the target phrase, stop
+  if (population.isFinished()) {
+    //println(millis()/1000.0);
+    noLoop();
+  }
+
+  displayInfo();
+}
+
+function displayInfo() {
+  // Display current status of population
+  var answer = population.getBest();
+
+  bestPhrase.html("Best phrase:<br>" + answer);
+
+  var statstext = "total generations:     " + population.getGenerations() + "<br>";
+  statstext += "average fitness:       " + nf(population.getAverageFitness()) + "<br>";
+  statstext += "total population:      " + popmax + "<br>";
+  statstext += "mutation rate:         " + floor(mutationRate * 100) + "%";
+
+  stats.html(statstext);
+
+  allPhrases.html("All phrases:<br>" + population.allPhrases());
+}
+
+function newChar() {
+  var allChars = "cъешьещёэтихмягкихфранцузскихбулокдавыпейчаюжВК!?  ";
+  var c = floor(random(allChars.length));
+  return allChars[c];
+}
+
+// Constructor (makes a random DNA)
+function DNA(num) {
+  // The genetic sequence
+  this.genes = []; // TargetPhrase.length charaters
+  this.fitness = 0;
+  for (var i = 0; i < num; i++) {
+    this.genes[i] = newChar(); // Pick from range of chars
+  }
+}
+
+// Fitness function (returns floating point % of "correct" characters)
+DNA.prototype.calcFitness = function(target) {
+  var score = 0;
+  for (var i = 0; i < this.genes.length; i++) {
+    if (this.genes[i] == target.charAt(i)) {
+      score++;
+    }
+  }
+  this.fitness = score / target.length;
+};
+
+// Crossover
+DNA.prototype.crossover = function(partner) {
+  // A new child
+  var child = new DNA(this.genes.length);
+
+  var midpoint = floor(random(this.genes.length)); // Pick a midpoint
+
+  // Half from one, half from the other
+  for (var i = 0; i < this.genes.length; i++) {
+    if (i > midpoint) child.genes[i] = this.genes[i];
+    else child.genes[i] = partner.genes[i];
+  }
+  return child;
+};
+
+// Based on a mutation probability, picks a new random character
+DNA.prototype.mutate = function(mutationRate) {
+  for (var i = 0; i < this.genes.length; i++) {
+    if (random(1) < mutationRate) {
+      this.genes[i] = newChar();
+    }
+  }
+};
+
+// Converts character array to a String
+DNA.prototype.getPhrase = function() {
+  return this.genes.join("");
+};
+
+function Population(p, m, num) {
+
+  this.population = []; // Array to hold the current population
+  this.matingPool = []; // ArrayList which we will use for our "mating pool"
+  this.generations = 0; // Number of generations
+  this.finished = false; // Are we finished evolving?
+  this.target = p; // Target phrase
+  this.mutationRate = m; // Mutation rate
+  this.perfectScore = 1;
+
+  this.best = "";
+
+  for (var i = 0; i < num; i++) {
+    this.population[i] = new DNA(this.target.length);
+  }
+
+  this.calcFitness();
+}
+
+// Fill our fitness array with a value for every member of the population
+Population.prototype.calcFitness = function() {
+  for (let i = 0; i < this.population.length; i++) {
+    this.population[i].calcFitness(target);
+  }
+};
+
+// Generate a mating pool
+Population.prototype.naturalSelection = function() {
+  // Clear the ArrayList
+  this.matingPool = [];
+
+  var maxFitness = 0;
+  for (var i = 0; i < this.population.length; i++) {
+    if (this.population[i].fitness > maxFitness) {
+      maxFitness = this.population[i].fitness;
+    }
+  }
+
+  for (let i = 0; i < this.population.length; i++) {
+
+    var fitness = map(this.population[i].fitness, 0, maxFitness, 0, 1);
+    var n = floor(fitness * 100); // Arbitrary multiplier, we can also use monte carlo method
+    for (var j = 0; j < n; j++) { // and pick two random numbers
+      this.matingPool.push(this.population[i]);
+    }
+  }
+};
+
+// Create a new generation
+Population.prototype.generate = function() {
+  // Refill the population with children from the mating pool
+  for (var i = 0; i < this.population.length; i++) {
+    var a = floor(random(this.matingPool.length));
+    var b = floor(random(this.matingPool.length));
+    var partnerA = this.matingPool[a];
+    var partnerB = this.matingPool[b];
+    var child = partnerA.crossover(partnerB);
+    child.mutate(this.mutationRate);
+    this.population[i] = child;
+  }
+  this.generations++;
+};
+
+Population.prototype.getBest = function() {
+  return this.best;
+};
+
+// Compute the current "most fit" member of the population
+Population.prototype.evaluate = function() {
+  var worldrecord = 0.0;
+  var index = 0;
+  for (var i = 0; i < this.population.length; i++) {
+    if (this.population[i].fitness > worldrecord) {
+      index = i;
+      worldrecord = this.population[i].fitness;
+    }
+  }
+
+  this.best = this.population[index].getPhrase();
+  if (worldrecord === this.perfectScore) {
+    this.finished = true;
+  }
+};
+
+Population.prototype.isFinished = function() {
+  return this.finished;
+};
+
+Population.prototype.getGenerations = function() {
+  return this.generations;
+};
+
+// Compute average fitness for the population
+Population.prototype.getAverageFitness = function() {
+  var total = 0;
+  for (var i = 0; i < this.population.length; i++) {
+    total += this.population[i].fitness;
+  }
+  return total / (this.population.length);
+};
+
+Population.prototype.allPhrases = function() {
+  var everything = "";
+
+  var displayLimit = min(this.population.length, 50);
+
+  for (var i = 0; i < displayLimit; i++) {
+    everything += this.population[i].getPhrase() + "<br>";
+  }
+  return everything;
+};
+</script>
